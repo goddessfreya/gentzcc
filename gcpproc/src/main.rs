@@ -37,7 +37,9 @@ enum SourceLex {
     #[token = "\n#"]
     PreprocStart,
 
-    #[regex = "\n[^#][^\n]+"]
+    // Works as long as there is a new line at both the start and end of the
+    // file.
+    #[regex = "\n[^#\n][^\n]*"]
     NonPreprocStart,
 }
 

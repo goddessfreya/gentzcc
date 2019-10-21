@@ -1,5 +1,7 @@
 //! The state machine that handles translation phases 1 and 2, and
 //! the comment/whitespace portion of translation phase 3.
+//!
+//! Garuntees a newline at both the start and end of the file.
 
 #[cfg(test)]
 mod tests;
@@ -39,7 +41,7 @@ impl State {
         State {
             lc_active:      None,
             quot_active:    None,
-            new_file:       String::new(),
+            new_file:       String::with_capacity(file.len()),
             non_multimerge: false,
             cloc:           Location::new(filename.to_string(), 0, 0),
             oloc:           Location::new(filename.to_string(), 1, 0),
@@ -163,6 +165,142 @@ impl State {
         self.drain_stack(stack);
         self.lc_active = None;
     }
+
+    fn process_char(&mut self, params: &Params, stacks: &mut [CharStack], b: char) {
+        let mut stack = self.cur_stack(stacks);
+        self.cloc.nchar += 1;
+
+        if !self.lc_active.is_some() {
+            match self.quot_active {
+                None if b == '\'' || b == '"' => {
+                    self.quot_active = Some((b, self.cloc.clone()))
+                },
+                Some((q, _))
+                    if q == b
+                        && ((stack[1].is_some()
+                            && stack[1].as_ref().map(|s| s.0)
+                                != Some('\\'))
+                            || (stack[1].is_none()
+                                && stack[0].is_some()
+                                && stack[0].as_ref().map(|s| s.0)
+                                    != Some('\\'))
+                            || (stack[1].is_none() && stack[0].is_none())) =>
+                {
+                    self.quot_active = None
+                },
+                _ => (),
+            }
+        }
+
+        if b == '\n' {
+            if stack[1].as_ref().map(|s| s.0) != Some('\\') {
+                if let Some(ref mut lca) = self.lc_active {
+                    if lca.0 == CommentType::SingleLine {
+                        self.end_comment(stack)
+                    }
+                }
+
+                if let Some(ref qa) = self.quot_active {
+                    self.issues.push(Issue::new(
+                        qa.1.clone(),
+                        IssueType::Warning,
+                        IssueDesc::QuotationMarkNotClosed(qa.0),
+                    ));
+                }
+
+                self.cloc.nchar = 0;
+                self.cloc.nline += 1;
+            } else if !self.non_multimerge {
+                self.del_char(stack);
+                self.non_multimerge = true;
+
+                self.cloc.nchar = 0;
+                self.cloc.nline += 1;
+                return;
+            }
+        } else if stack[0].as_ref().map(|s| s.0) == Some('?')
+            && stack[1].as_ref().map(|s| s.0) == Some('?')
+        {
+            // Macro cause lambda causes lifetime issues :/
+            macro_rules! replace_char {
+                ($rep:tt) => {{
+                    let mut tri_loc = self.cloc.clone();
+                    tri_loc.nchar -= 2;
+                    if params.version.ver_ge(CVersion::Max, CppVersion::Cpp17)
+                        || !params.trigraphs
+                    {
+                        self.issues.push(Issue::new(
+                            tri_loc,
+                            IssueType::Warning,
+                            IssueDesc::TrigraphPresentAndIgnored(b),
+                        ));
+                    } else {
+                        if params.wtrigraphs {
+                            self.issues.push(Issue::new(
+                                tri_loc.clone(),
+                                IssueType::Warning,
+                                IssueDesc::TrigraphPresent(b),
+                            ));
+                        }
+                        self.replace_stack2(stack, Some(($rep, tri_loc)));
+                        return;
+                    }
+                }};
+            }
+            match b {
+                '<' => replace_char!('{'),
+                '>' => replace_char!('}'),
+                '(' => replace_char!('['),
+                ')' => replace_char!(']'),
+                '=' => replace_char!('#'),
+                '/' => replace_char!('\\'),
+                '\'' => replace_char!('^'),
+                '!' => replace_char!('|'),
+                '-' => replace_char!('~'),
+                _ => (),
+            }
+        }
+
+        if self.quot_active.is_none() {
+            // Macro cause lambda causes lifetime issues :/
+            macro_rules! handle_comment_start {
+                (CommentType :: $type:ident) => {
+                    let mut com_loc = self.cloc.clone();
+                    com_loc.nchar -= 1;
+                    self.lc_active =
+                        Some((CommentType::$type, com_loc.clone()));
+                    self.replace_stack1(stack, Some((' ', com_loc)));
+                    stack = self.cur_stack(stacks);
+                    assert_eq!(*stack, [None, None]);
+                };
+            }
+            match (&self.lc_active, &mut stack, b) {
+                (None, [_, Some(('/', _))], '/')
+                    if params
+                        .version
+                        .ver_ge(CVersion::C99, CppVersion::Min) =>
+                {
+                    handle_comment_start!(CommentType::SingleLine);
+                    return;
+                }
+                (None, [_, Some(('/', _))], '*') => {
+                    handle_comment_start!(CommentType::MultiLine);
+                    return;
+                },
+                (
+                    Some((CommentType::MultiLine, _)),
+                    [_, Some(('*', _))],
+                    '/',
+                ) => {
+                    self.lc_active = None;
+                    return;
+                },
+                _ => (),
+            }
+        }
+
+        self.insert_stack(stack, Some((b, self.cloc.clone())));
+    }
 }
 
 #[derive(Debug, PartialEq)]
@@ -213,143 +351,12 @@ pub fn preproc_phases_1_to_3(
         }
     }
 
-    let file = "\n".to_string() + file + "\n\n";
-
+    state.process_char(params, &mut stacks, '\n');
     for b in file.chars() {
-        let mut stack = state.cur_stack(&mut stacks);
-        state.cloc.nchar += 1;
-
-        if !state.lc_active.is_some() {
-            match state.quot_active {
-                None if b == '\'' || b == '"' => {
-                    state.quot_active = Some((b, state.cloc.clone()))
-                },
-                Some((q, _))
-                    if q == b
-                        && ((stack[1].is_some()
-                            && stack[1].as_ref().map(|s| s.0)
-                                != Some('\\'))
-                            || (stack[1].is_none()
-                                && stack[0].is_some()
-                                && stack[0].as_ref().map(|s| s.0)
-                                    != Some('\\'))
-                            || (stack[1].is_none() && stack[0].is_none())) =>
-                {
-                    state.quot_active = None
-                },
-                _ => (),
-            }
-        }
-
-        if b == '\n' {
-            if stack[1].as_ref().map(|s| s.0) != Some('\\') {
-                if let Some(ref mut lca) = state.lc_active {
-                    if lca.0 == CommentType::SingleLine {
-                        state.end_comment(stack)
-                    }
-                }
-
-                if let Some(ref qa) = state.quot_active {
-                    state.issues.push(Issue::new(
-                        qa.1.clone(),
-                        IssueType::Warning,
-                        IssueDesc::QuotationMarkNotClosed(qa.0),
-                    ));
-                }
-
-                state.cloc.nchar = 0;
-                state.cloc.nline += 1;
-            } else if !state.non_multimerge {
-                state.del_char(stack);
-                state.non_multimerge = true;
-
-                state.cloc.nchar = 0;
-                state.cloc.nline += 1;
-                continue;
-            }
-        } else if stack[0].as_ref().map(|s| s.0) == Some('?')
-            && stack[1].as_ref().map(|s| s.0) == Some('?')
-        {
-            // Macro cause lambda causes lifetime issues :/
-            macro_rules! replace_char {
-                ($rep:tt) => {{
-                    let mut tri_loc = state.cloc.clone();
-                    tri_loc.nchar -= 2;
-                    if params.version.ver_ge(CVersion::Max, CppVersion::Cpp17)
-                        || !params.trigraphs
-                    {
-                        state.issues.push(Issue::new(
-                            tri_loc,
-                            IssueType::Warning,
-                            IssueDesc::TrigraphPresentAndIgnored(b),
-                        ));
-                    } else {
-                        if params.wtrigraphs {
-                            state.issues.push(Issue::new(
-                                tri_loc.clone(),
-                                IssueType::Warning,
-                                IssueDesc::TrigraphPresent(b),
-                            ));
-                        }
-                        state.replace_stack2(stack, Some(($rep, tri_loc)));
-                        continue;
-                    }
-                }};
-            }
-            match b {
-                '<' => replace_char!('{'),
-                '>' => replace_char!('}'),
-                '(' => replace_char!('['),
-                ')' => replace_char!(']'),
-                '=' => replace_char!('#'),
-                '/' => replace_char!('\\'),
-                '\'' => replace_char!('^'),
-                '!' => replace_char!('|'),
-                '-' => replace_char!('~'),
-                _ => (),
-            }
-        }
-
-        if state.quot_active.is_none() {
-            // Macro cause lambda causes lifetime issues :/
-            macro_rules! handle_comment_start {
-                (CommentType :: $type:ident) => {
-                    let mut com_loc = state.cloc.clone();
-                    com_loc.nchar -= 1;
-                    state.lc_active =
-                        Some((CommentType::$type, com_loc.clone()));
-                    state.replace_stack1(stack, Some((' ', com_loc)));
-                    stack = state.cur_stack(&mut stacks);
-                    assert_eq!(*stack, [None, None]);
-                };
-            }
-            match (&state.lc_active, &mut stack, b) {
-                (None, [_, Some(('/', _))], '/')
-                    if params
-                        .version
-                        .ver_ge(CVersion::C99, CppVersion::Min) =>
-                {
-                    handle_comment_start!(CommentType::SingleLine);
-                    continue;
-                }
-                (None, [_, Some(('/', _))], '*') => {
-                    handle_comment_start!(CommentType::MultiLine);
-                    continue;
-                },
-                (
-                    Some((CommentType::MultiLine, _)),
-                    [_, Some(('*', _))],
-                    '/',
-                ) => {
-                    state.lc_active = None;
-                    continue;
-                },
-                _ => (),
-            }
-        }
-
-        state.insert_stack(stack, Some((b, state.cloc.clone())));
+        state.process_char(params, &mut stacks, b);
     }
+    state.process_char(params, &mut stacks, '\n');
+    state.process_char(params, &mut stacks, '\n');
 
     let stack = state.cur_stack(&mut stacks);
     state.drain_stack(stack);
