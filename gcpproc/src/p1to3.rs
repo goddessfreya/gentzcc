@@ -101,7 +101,7 @@ impl State {
                     if s0 == '\n' {
                         self.oloc.nchar = 0;
                         self.oloc.nline += 1;
-                    } else {
+                    } else if s0 != ' ' {
                         self.oloc.nchar += 1;
                         let this_mapping = (sloc, self.oloc.clone());
                         if if let Some(lm) = self.loc_mapping.last() {
