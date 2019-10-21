@@ -1,6 +1,5 @@
-//! The state machine for translation phases 1 and 2, and comment/whitespace
-//! portion of phase 3, which depending on which standard you read, might be
-//! the whole of stage 3.
+//! The state machine that handles translation phases 1 and 2, and
+//! the comment/whitespace portion of translation phase 3.
 
 #[cfg(test)]
 mod tests;
