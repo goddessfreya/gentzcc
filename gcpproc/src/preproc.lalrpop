@@ -1,0 +1,5 @@
+use std::str::FromStr;
+
+grammar;
+
+pub Tok: String = <s:r"[a-zA-Z0-9]*"> => s.to_string();
