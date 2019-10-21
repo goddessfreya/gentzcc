@@ -285,7 +285,7 @@ pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Out
                     state.lc_active = Some((CommentType::$type, com_loc.clone()));
                     state.replace_stack1(stack, Some((' ', com_loc)));
                     stack = state.cur_stack(&mut stacks);
-                    *stack = [None, None];
+                    assert_eq!(*stack, [None, None]);
                 };
             }
             match (&state.lc_active, &mut stack, b) {
