@@ -1,10 +1,14 @@
-//! The state machine for translation phases 1 and 2, and comment/whitespace portion of phase 3, which depending on which
-//! standard you read, might be the whole of stage 3.
+//! The state machine for translation phases 1 and 2, and comment/whitespace
+//! portion of phase 3, which depending on which standard you read, might be
+//! the whole of stage 3.
 
 #[cfg(test)]
 mod tests;
 
-use crate::common::{CVersion, CppVersion, Issue, IssueDesc, IssueType, Location, Params, Version};
+use crate::common::{
+    CVersion, CppVersion, Issue, IssueDesc, IssueType, Location, Params,
+    Version,
+};
 
 type CharStack = [Option<(char, Location)>; 2];
 
@@ -17,37 +21,40 @@ enum CommentType {
 
 #[derive(Debug)]
 struct State {
-    lc_active: Option<(CommentType, Location)>,
-    quot_active: Option<(char, Location)>,
-    new_file: String,
+    lc_active:      Option<(CommentType, Location)>,
+    quot_active:    Option<(char, Location)>,
+    new_file:       String,
     non_multimerge: bool,
-    cloc: Location,
-    oloc: Location,
-    last_add: Option<char>,
+    cloc:           Location,
+    oloc:           Location,
+    last_add:       Option<char>,
     // We use the number of spaces to guess the number of tokens we will
     // end up having for lalrpop.
-    num_spaces: usize,
-    issues: Vec<Issue>,
+    num_spaces:  usize,
+    issues:      Vec<Issue>,
     loc_mapping: Vec<(Location, Location)>,
 }
 
 impl State {
     fn new(filename: &str, file: &str) -> Self {
         State {
-            lc_active: None,
-            quot_active: None,
-            new_file: String::new(),
+            lc_active:      None,
+            quot_active:    None,
+            new_file:       String::new(),
             non_multimerge: false,
-            cloc: Location::new(filename.to_string(), 0, 0),
-            oloc: Location::new(filename.to_string(), 1, 0),
-            last_add: None,
-            num_spaces: 0,
-            issues: vec![],
-            loc_mapping: Vec::with_capacity(file.len() / 10),
+            cloc:           Location::new(filename.to_string(), 0, 0),
+            oloc:           Location::new(filename.to_string(), 1, 0),
+            last_add:       None,
+            num_spaces:     0,
+            issues:         vec![],
+            loc_mapping:    Vec::with_capacity(file.len() / 10),
         }
     }
 
-    fn cur_stack<'a>(&mut self, stacks: &'a mut [CharStack]) -> &'a mut CharStack {
+    fn cur_stack<'a>(
+        &mut self,
+        stacks: &'a mut [CharStack],
+    ) -> &'a mut CharStack {
         if self.lc_active.is_some() {
             &mut stacks[1]
         } else {
@@ -55,13 +62,19 @@ impl State {
         }
     }
 
-    fn insert_stack(&mut self, stack: &mut CharStack, b: Option<(char, Location)>) {
+    fn insert_stack(
+        &mut self,
+        stack: &mut CharStack,
+        b: Option<(char, Location)>,
+    ) {
         let mut this_stack = b;
         std::mem::swap(&mut this_stack, &mut stack[0]);
         stack.swap(0, 1);
         self.non_multimerge = false;
 
-        if !self.lc_active.is_some() || stack[1].as_ref().map(|b| b.0) == Some('\n') {
+        if !self.lc_active.is_some()
+            || stack[1].as_ref().map(|b| b.0) == Some('\n')
+        {
             if let Some((s0, sloc)) = this_stack {
                 // Excludes newline.
                 let is_whitespace = |c| -> bool {
@@ -72,7 +85,8 @@ impl State {
                 };
 
                 if self.quot_active.is_some()
-                    || (((self.last_add != Some(' ') && self.last_add != Some('\n'))
+                    || (((self.last_add != Some(' ')
+                        && self.last_add != Some('\n'))
                         || !is_whitespace(s0))
                         && (s0 != '\n' || self.last_add != Some('\n')))
                 {
@@ -92,12 +106,14 @@ impl State {
                         if if let Some(lm) = self.loc_mapping.last() {
                             let mut lm = lm.clone();
                             if lm.0.nline != this_mapping.0.nline {
-                                lm.1.nline = lm.1.nline + this_mapping.0.nline - lm.0.nline;
+                                lm.1.nline = lm.1.nline + this_mapping.0.nline
+                                    - lm.0.nline;
                                 lm.0.nline = this_mapping.0.nline;
                                 lm.1.nchar = 0;
                                 lm.0.nchar = 0;
                             }
-                            lm.1.nchar = lm.1.nchar + this_mapping.0.nchar - lm.0.nchar;
+                            lm.1.nchar =
+                                lm.1.nchar + this_mapping.0.nchar - lm.0.nchar;
                             lm.0.nchar = this_mapping.0.nchar;
                             lm != this_mapping
                         } else {
@@ -114,12 +130,20 @@ impl State {
         }
     }
 
-    fn replace_stack1(&mut self, stack: &mut CharStack, b: Option<(char, Location)>) {
+    fn replace_stack1(
+        &mut self,
+        stack: &mut CharStack,
+        b: Option<(char, Location)>,
+    ) {
         stack[1] = b;
         self.non_multimerge = false;
     }
 
-    fn replace_stack2(&mut self, stack: &mut CharStack, b: Option<(char, Location)>) {
+    fn replace_stack2(
+        &mut self,
+        stack: &mut CharStack,
+        b: Option<(char, Location)>,
+    ) {
         stack[0] = None;
         stack[1] = b;
         self.non_multimerge = false;
@@ -144,9 +168,9 @@ impl State {
 
 #[derive(Debug, PartialEq)]
 pub struct Output {
-    pub num_spaces: usize,
-    pub new_file: String,
-    pub issues: Vec<Issue>,
+    pub num_spaces:  usize,
+    pub new_file:    String,
+    pub issues:      Vec<Issue>,
     pub loc_mapping: Vec<(Location, Location)>,
 }
 
@@ -155,7 +179,11 @@ pub struct Output {
 //
 // TODO: Officially, newlines are either '\n', '\r' or '\r\n'.... however, we
 // only treat '\n' as a newline.
-pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Output {
+pub fn preproc_phases_1_to_3(
+    file: &str,
+    filename: &str,
+    params: &Params,
+) -> Output {
     let mut stacks: [CharStack; 2] = [[None, None], [None, None]];
     let mut state = State::new(filename, &file);
 
@@ -168,7 +196,9 @@ pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Out
     // end.
     //
     // But before that, we issue a warning if the behaviour is undefined.
-    if params.version.ver_le(CVersion::Max, CppVersion::Cpp03) && file.len() != 0 {
+    if params.version.ver_le(CVersion::Max, CppVersion::Cpp03)
+        && file.len() != 0
+    {
         if &file[file.len() - 1..file.len()] != "\n"
             || &file[file.len() - 2..file.len() - 1] == "\\"
         {
@@ -192,18 +222,22 @@ pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Out
 
         if !state.lc_active.is_some() {
             match state.quot_active {
-                None if b == '\'' || b == '"' => state.quot_active = Some((b, state.cloc.clone())),
+                None if b == '\'' || b == '"' => {
+                    state.quot_active = Some((b, state.cloc.clone()))
+                },
                 Some((q, _))
                     if q == b
                         && ((stack[1].is_some()
-                            && stack[1].as_ref().map(|s| s.0) != Some('\\'))
+                            && stack[1].as_ref().map(|s| s.0)
+                                != Some('\\'))
                             || (stack[1].is_none()
                                 && stack[0].is_some()
-                                && stack[0].as_ref().map(|s| s.0) != Some('\\'))
+                                && stack[0].as_ref().map(|s| s.0)
+                                    != Some('\\'))
                             || (stack[1].is_none() && stack[0].is_none())) =>
                 {
                     state.quot_active = None
-                }
+                },
                 _ => (),
             }
         }
@@ -242,7 +276,8 @@ pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Out
                 ($rep:tt) => {{
                     let mut tri_loc = state.cloc.clone();
                     tri_loc.nchar -= 2;
-                    if params.version.ver_ge(CVersion::Max, CppVersion::Cpp17) || !params.trigraphs
+                    if params.version.ver_ge(CVersion::Max, CppVersion::Cpp17)
+                        || !params.trigraphs
                     {
                         state.issues.push(Issue::new(
                             tri_loc,
@@ -282,7 +317,8 @@ pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Out
                 (CommentType :: $type:ident) => {
                     let mut com_loc = state.cloc.clone();
                     com_loc.nchar -= 1;
-                    state.lc_active = Some((CommentType::$type, com_loc.clone()));
+                    state.lc_active =
+                        Some((CommentType::$type, com_loc.clone()));
                     state.replace_stack1(stack, Some((' ', com_loc)));
                     stack = state.cur_stack(&mut stacks);
                     assert_eq!(*stack, [None, None]);
@@ -290,7 +326,9 @@ pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Out
             }
             match (&state.lc_active, &mut stack, b) {
                 (None, [_, Some(('/', _))], '/')
-                    if params.version.ver_ge(CVersion::C99, CppVersion::Min) =>
+                    if params
+                        .version
+                        .ver_ge(CVersion::C99, CppVersion::Min) =>
                 {
                     handle_comment_start!(CommentType::SingleLine);
                     continue;
@@ -298,11 +336,15 @@ pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Out
                 (None, [_, Some(('/', _))], '*') => {
                     handle_comment_start!(CommentType::MultiLine);
                     continue;
-                }
-                (Some((CommentType::MultiLine, _)), [_, Some(('*', _))], '/') => {
+                },
+                (
+                    Some((CommentType::MultiLine, _)),
+                    [_, Some(('*', _))],
+                    '/',
+                ) => {
                     state.lc_active = None;
                     continue;
-                }
+                },
                 _ => (),
             }
         }
@@ -316,14 +358,14 @@ pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Out
     match state.lc_active {
         Some((CommentType::SingleLine, _)) => {
             panic!("Single line comment not at {:?}", state.lc_active)
-        }
+        },
         Some((CommentType::MultiLine, loc)) => {
             state.issues.push(Issue::new(
                 loc,
                 IssueType::Error,
                 IssueDesc::MultilineCommentNotClosed,
             ));
-        }
+        },
         _ => (),
     }
 
@@ -334,14 +376,14 @@ pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Out
                 IssueType::Error,
                 IssueDesc::QuotationMarkNotClosed(q),
             ));
-        }
+        },
         _ => (),
     }
 
     Output {
-        num_spaces: state.num_spaces,
-        new_file: state.new_file,
-        issues: state.issues,
+        num_spaces:  state.num_spaces,
+        new_file:    state.new_file,
+        issues:      state.issues,
         loc_mapping: state.loc_mapping,
     }
 }

@@ -80,7 +80,7 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Params {
-            trigraphs: false,
+            trigraphs:  false,
             wtrigraphs: false,
             // NOTE: gcc's default for C is C11, and for C++ it's C++14.
             // Remember to decide between the two based on fileext.
@@ -95,8 +95,8 @@ pub type CharNumber = usize;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Location {
     pub filename: String,
-    pub nline: LineNumber,
-    pub nchar: CharNumber,
+    pub nline:    LineNumber,
+    pub nchar:    CharNumber,
 }
 
 impl Location {
@@ -112,9 +112,9 @@ impl Location {
 /// Describes a diagnostic message that we've encountered.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Issue {
-    pub loc: Location,
+    pub loc:   Location,
     pub itype: IssueType,
-    pub desc: IssueDesc,
+    pub desc:  IssueDesc,
 }
 
 impl Issue {
@@ -190,9 +190,14 @@ macro_rules! CVersionCmp {
 
 impl Version {
     CVersionCmp!(ver_gr, >);
+
     CVersionCmp!(ver_ls, <);
+
     CVersionCmp!(ver_ge, >=);
+
     CVersionCmp!(ver_le, <=);
+
     CVersionCmp!(ver_eq, ==);
+
     CVersionCmp!(ver_ne, !=);
 }

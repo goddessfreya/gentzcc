@@ -38,9 +38,9 @@ fn blank() {
                 }
             ),
             Output {
-                num_spaces: 1,
-                new_file: String::from("\n"),
-                issues: vec![],
+                num_spaces:  1,
+                new_file:    String::from("\n"),
+                issues:      vec![],
                 loc_mapping: vec![],
             },
         )
@@ -54,7 +54,10 @@ fn singleline_merge() {
     do_every(|version| {
         assert_eq!(
             preproc_phases_1_to_3(
-                &(String::from("a") + &"\\".repeat(SLASHES) + &"\n".repeat(NEWLINES) + "b\n"),
+                &(String::from("a")
+                    + &"\\".repeat(SLASHES)
+                    + &"\n".repeat(NEWLINES)
+                    + "b\n"),
                 &*FILENAME,
                 &Params {
                     version,
@@ -62,9 +65,11 @@ fn singleline_merge() {
                 },
             ),
             Output {
-                num_spaces: 3,
-                new_file: String::from("\na") + &"\\".repeat(SLASHES - 1) + "\nb\n",
-                issues: vec![],
+                num_spaces:  3,
+                new_file:    String::from("\na")
+                    + &"\\".repeat(SLASHES - 1)
+                    + "\nb\n",
+                issues:      vec![],
                 loc_mapping: vec![
                     (
                         Location::new(FILENAME.clone(), 1, 1),
@@ -87,7 +92,10 @@ fn singleline_merge_nonblank() {
     do_every(|version| {
         assert_eq!(
             preproc_phases_1_to_3(
-                &(String::from("a") + &"\\".repeat(SLASHES) + &"\nb".repeat(NEWLINES) + "\n"),
+                &(String::from("a")
+                    + &"\\".repeat(SLASHES)
+                    + &"\nb".repeat(NEWLINES)
+                    + "\n"),
                 &*FILENAME,
                 &Params {
                     version,
@@ -95,9 +103,11 @@ fn singleline_merge_nonblank() {
                 },
             ),
             Output {
-                num_spaces: NEWLINES + 1,
-                new_file: String::from("\na") + &"\\".repeat(SLASHES - 1) + &"b\n".repeat(NEWLINES),
-                issues: vec![],
+                num_spaces:  NEWLINES + 1,
+                new_file:    String::from("\na")
+                    + &"\\".repeat(SLASHES - 1)
+                    + &"b\n".repeat(NEWLINES),
+                issues:      vec![],
                 loc_mapping: vec![
                     (
                         Location::new(FILENAME.clone(), 1, 1),
@@ -126,15 +136,15 @@ fn header_comment() {
                 }
             ),
             Output {
-                num_spaces: match version {
+                num_spaces:  match version {
                     Version::C(CVersion::C89) => 8,
                     _ => 4,
                 },
-                new_file: String::from(match version {
+                new_file:    String::from(match version {
                     Version::C(CVersion::C89) => "\na < b // c > d\n",
                     _ => "\na < b\n",
                 }),
-                issues: vec![],
+                issues:      vec![],
                 loc_mapping: vec![(
                     Location::new(FILENAME.clone(), 1, 1),
                     Location::new(FILENAME.clone(), 2, 1),
@@ -157,9 +167,9 @@ fn header_multicomment() {
                 }
             ),
             Output {
-                num_spaces: 5,
-                new_file: String::from("\na < b e\n"),
-                issues: vec![],
+                num_spaces:  5,
+                new_file:    String::from("\na < b e\n"),
+                issues:      vec![],
                 loc_mapping: vec![
                     (
                         Location::new(FILENAME.clone(), 1, 1),
@@ -188,9 +198,11 @@ fn double_quote_comment() {
                 }
             ),
             Output {
-                num_spaces: 14,
-                new_file: String::from("\na \"b // c /* d */ e /* f\" g */ h\n"),
-                issues: vec![],
+                num_spaces:  14,
+                new_file:    String::from(
+                    "\na \"b // c /* d */ e /* f\" g */ h\n"
+                ),
+                issues:      vec![],
                 loc_mapping: vec![(
                     Location::new(FILENAME.clone(), 1, 1),
                     Location::new(FILENAME.clone(), 2, 1),
@@ -213,9 +225,11 @@ fn single_quote_comment() {
                 }
             ),
             Output {
-                num_spaces: 14,
-                new_file: String::from("\na 'b // c /* d */ e /* f' g */ h\n"),
-                issues: vec![],
+                num_spaces:  14,
+                new_file:    String::from(
+                    "\na 'b // c /* d */ e /* f' g */ h\n"
+                ),
+                issues:      vec![],
                 loc_mapping: vec![(
                     Location::new(FILENAME.clone(), 1, 1),
                     Location::new(FILENAME.clone(), 2, 1),
