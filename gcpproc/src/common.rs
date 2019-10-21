@@ -1,4 +1,4 @@
-/// Common files for preprocessor.
+//! Common files for preprocessor.
 
 /// All the parameters the preprocessor cares about.
 pub struct Params {
