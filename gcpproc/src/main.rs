@@ -51,6 +51,16 @@ enum PreprocLex {
     #[error]
     Error,
 
+    //     preprocessing-token:
+    //                  header-name
+    //                  identifier
+    //                  pp-number
+    //                  character-constant
+    //                  string-literal
+    //                  operator
+    //                  punctuator
+    //                  each non-white-space character that cannot be one of
+    //                  the above
     #[token = " "]
     Space,
 
@@ -72,53 +82,6 @@ fn main() {
 \"\\\\
 n\"
 
-a < b \\
-c > d
-
-a \" b \\
-c \" d
-
-a // b
-
-a // \\\\
-b
-c
-d
-
-a // \\
-b \\
-c
-d
-
-a b \\
-c d e
-
-a /* b
-c */ d
-
-a /* b \\
-c */ d
-
-a /* b */ c
-
-a /\\
-* b */ c
-
-a /\\
-/ b // c
-
-a ??/
-b
-
-a // ??/
-b
-
-a /* ??/
-c */ d
-
-a ??/??/
-b
-c
 ";
     let params = Params::default();
     let filename = "a";

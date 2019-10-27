@@ -81,7 +81,7 @@ impl Default for Params {
     fn default() -> Self {
         Params {
             trigraphs:  false,
-            wtrigraphs: false,
+            wtrigraphs: true,
             // NOTE: gcc's default for C is C11, and for C++ it's C++14.
             // Remember to decide between the two based on fileext.
             version: Version::C(CVersion::C11),
@@ -95,16 +95,24 @@ pub type CharNumber = usize;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Location {
     pub filename: String,
-    pub nline:    LineNumber,
-    pub nchar:    CharNumber,
+    pub nline:    Option<LineNumber>,
+    pub nchar:    Option<CharNumber>,
 }
 
 impl Location {
     pub fn new(filename: String, nline: LineNumber, nchar: CharNumber) -> Self {
         Location {
             filename,
-            nline,
-            nchar,
+            nline: Some(nline),
+            nchar: Some(nchar),
+        }
+    }
+
+    pub fn new_noline(filename: String) -> Self {
+        Location {
+            filename,
+            nline: None,
+            nchar: None,
         }
     }
 }
@@ -112,13 +120,13 @@ impl Location {
 /// Describes a diagnostic message that we've encountered.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Issue {
-    pub loc:   Location,
+    pub loc:   Option<Location>,
     pub itype: IssueType,
     pub desc:  IssueDesc,
 }
 
 impl Issue {
-    pub fn new(loc: Location, itype: IssueType, desc: IssueDesc) -> Self {
+    pub fn new(loc: Option<Location>, itype: IssueType, desc: IssueDesc) -> Self {
         Issue { loc, itype, desc }
     }
 }
@@ -141,6 +149,7 @@ pub enum IssueDesc {
     // Last char in trigraph
     TrigraphPresentAndIgnored(char),
     TrigraphPresent(char),
+    TrigraphAndVersionConflict,
     FileEndMissingNewline,
 }
 

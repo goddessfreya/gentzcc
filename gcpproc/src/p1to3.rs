@@ -6,10 +6,7 @@
 #[cfg(test)]
 mod tests;
 
-use crate::common::{
-    CVersion, CppVersion, Issue, IssueDesc, IssueType, Location, Params,
-    Version,
-};
+use crate::common::{CVersion, CppVersion, Issue, IssueDesc, IssueType, Location, Params, Version};
 
 type CharStack = [Option<(char, Location)>; 2];
 
@@ -52,10 +49,7 @@ impl State {
         }
     }
 
-    fn cur_stack<'a>(
-        &mut self,
-        stacks: &'a mut [CharStack],
-    ) -> &'a mut CharStack {
+    fn cur_stack<'a>(&mut self, stacks: &'a mut [CharStack]) -> &'a mut CharStack {
         if self.lc_active.is_some() {
             &mut stacks[1]
         } else {
@@ -63,19 +57,13 @@ impl State {
         }
     }
 
-    fn insert_stack(
-        &mut self,
-        stack: &mut CharStack,
-        b: Option<(char, Location)>,
-    ) {
+    fn insert_stack(&mut self, stack: &mut CharStack, b: Option<(char, Location)>) {
         let mut this_stack = b;
         std::mem::swap(&mut this_stack, &mut stack[0]);
         stack.swap(0, 1);
         self.non_multimerge = false;
 
-        if !self.lc_active.is_some()
-            || stack[1].as_ref().map(|b| b.0) == Some('\n')
-        {
+        if !self.lc_active.is_some() || stack[1].as_ref().map(|b| b.0) == Some('\n') {
             if let Some((s0, sloc)) = this_stack {
                 // Excludes newline.
                 let is_whitespace = |c| -> bool {
@@ -86,8 +74,7 @@ impl State {
                 };
 
                 if self.quot_active.is_some()
-                    || (((self.last_add != Some(' ')
-                        && self.last_add != Some('\n'))
+                    || (((self.last_add != Some(' ') && self.last_add != Some('\n'))
                         || !is_whitespace(s0))
                         && (s0 != '\n' || self.last_add != Some('\n')))
                 {
@@ -98,24 +85,26 @@ impl State {
                         self.num_spaces += 1;
                     }
 
+                    *self.oloc.nchar.as_mut().unwrap() += 1;
                     if s0 == '\n' {
-                        self.oloc.nchar = 0;
-                        self.oloc.nline += 1;
+                        *self.oloc.nchar.as_mut().unwrap() = 0;
+                        *self.oloc.nline.as_mut().unwrap() += 1;
                     } else if s0 != ' ' {
-                        self.oloc.nchar += 1;
                         let this_mapping = (sloc, self.oloc.clone());
                         if if let Some(lm) = self.loc_mapping.last() {
                             let mut lm = lm.clone();
                             if lm.0.nline != this_mapping.0.nline {
-                                lm.1.nline = lm.1.nline + this_mapping.0.nline
-                                    - lm.0.nline;
-                                lm.0.nline = this_mapping.0.nline;
-                                lm.1.nchar = 0;
-                                lm.0.nchar = 0;
+                                *lm.1.nline.as_mut().unwrap() = lm.1.nline.unwrap()
+                                    + this_mapping.0.nline.unwrap()
+                                    - lm.0.nline.unwrap();
+                                *lm.0.nline.as_mut().unwrap() = this_mapping.0.nline.unwrap();
+                                *lm.1.nchar.as_mut().unwrap() = 1;
+                                *lm.0.nchar.as_mut().unwrap() = 1;
                             }
-                            lm.1.nchar =
-                                lm.1.nchar + this_mapping.0.nchar - lm.0.nchar;
-                            lm.0.nchar = this_mapping.0.nchar;
+                            *lm.1.nchar.as_mut().unwrap() = lm.1.nchar.unwrap()
+                                + this_mapping.0.nchar.unwrap()
+                                - lm.0.nchar.unwrap();
+                            *lm.0.nchar.as_mut().unwrap() = this_mapping.0.nchar.unwrap();
                             lm != this_mapping
                         } else {
                             true
@@ -131,20 +120,12 @@ impl State {
         }
     }
 
-    fn replace_stack1(
-        &mut self,
-        stack: &mut CharStack,
-        b: Option<(char, Location)>,
-    ) {
+    fn replace_stack1(&mut self, stack: &mut CharStack, b: Option<(char, Location)>) {
         stack[1] = b;
         self.non_multimerge = false;
     }
 
-    fn replace_stack2(
-        &mut self,
-        stack: &mut CharStack,
-        b: Option<(char, Location)>,
-    ) {
+    fn replace_stack2(&mut self, stack: &mut CharStack, b: Option<(char, Location)>) {
         stack[0] = None;
         stack[1] = b;
         self.non_multimerge = false;
@@ -168,26 +149,22 @@ impl State {
 
     fn process_char(&mut self, params: &Params, stacks: &mut [CharStack], b: char) {
         let mut stack = self.cur_stack(stacks);
-        self.cloc.nchar += 1;
+        *self.cloc.nchar.as_mut().unwrap() += 1;
 
         if !self.lc_active.is_some() {
             match self.quot_active {
-                None if b == '\'' || b == '"' => {
-                    self.quot_active = Some((b, self.cloc.clone()))
-                },
+                None if b == '\'' || b == '"' => self.quot_active = Some((b, self.cloc.clone())),
                 Some((q, _))
                     if q == b
                         && ((stack[1].is_some()
-                            && stack[1].as_ref().map(|s| s.0)
-                                != Some('\\'))
+                            && stack[1].as_ref().map(|s| s.0) != Some('\\'))
                             || (stack[1].is_none()
                                 && stack[0].is_some()
-                                && stack[0].as_ref().map(|s| s.0)
-                                    != Some('\\'))
+                                && stack[0].as_ref().map(|s| s.0) != Some('\\'))
                             || (stack[1].is_none() && stack[0].is_none())) =>
                 {
                     self.quot_active = None
-                },
+                }
                 _ => (),
             }
         }
@@ -202,20 +179,20 @@ impl State {
 
                 if let Some(ref qa) = self.quot_active {
                     self.issues.push(Issue::new(
-                        qa.1.clone(),
+                        Some(qa.1.clone()),
                         IssueType::Warning,
                         IssueDesc::QuotationMarkNotClosed(qa.0),
                     ));
                 }
 
-                self.cloc.nchar = 0;
-                self.cloc.nline += 1;
+                *self.cloc.nchar.as_mut().unwrap() = 0;
+                *self.cloc.nline.as_mut().unwrap() += 1;
             } else if !self.non_multimerge {
                 self.del_char(stack);
                 self.non_multimerge = true;
 
-                self.cloc.nchar = 0;
-                self.cloc.nline += 1;
+                *self.cloc.nchar.as_mut().unwrap() = 0;
+                *self.cloc.nline.as_mut().unwrap() += 1;
                 return;
             }
         } else if stack[0].as_ref().map(|s| s.0) == Some('?')
@@ -225,23 +202,22 @@ impl State {
             macro_rules! replace_char {
                 ($rep:tt) => {{
                     let mut tri_loc = self.cloc.clone();
-                    tri_loc.nchar -= 2;
-                    if params.version.ver_ge(CVersion::Max, CppVersion::Cpp17)
-                        || !params.trigraphs
+                    *tri_loc.nchar.as_mut().unwrap() -= 2;
+                    if params.wtrigraphs {
+                        self.issues.push(Issue::new(
+                            Some(tri_loc.clone()),
+                            IssueType::Warning,
+                            IssueDesc::TrigraphPresent(b),
+                        ));
+                    }
+                    if params.version.ver_ge(CVersion::Max, CppVersion::Cpp14) || !params.trigraphs
                     {
                         self.issues.push(Issue::new(
-                            tri_loc,
+                            Some(tri_loc),
                             IssueType::Warning,
                             IssueDesc::TrigraphPresentAndIgnored(b),
                         ));
                     } else {
-                        if params.wtrigraphs {
-                            self.issues.push(Issue::new(
-                                tri_loc.clone(),
-                                IssueType::Warning,
-                                IssueDesc::TrigraphPresent(b),
-                            ));
-                        }
                         self.replace_stack2(stack, Some(($rep, tri_loc)));
                         return;
                     }
@@ -266,9 +242,8 @@ impl State {
             macro_rules! handle_comment_start {
                 (CommentType :: $type:ident) => {
                     let mut com_loc = self.cloc.clone();
-                    com_loc.nchar -= 1;
-                    self.lc_active =
-                        Some((CommentType::$type, com_loc.clone()));
+                    *com_loc.nchar.as_mut().unwrap() -= 1;
+                    self.lc_active = Some((CommentType::$type, com_loc.clone()));
                     self.replace_stack1(stack, Some((' ', com_loc)));
                     stack = self.cur_stack(stacks);
                     assert_eq!(*stack, [None, None]);
@@ -276,9 +251,7 @@ impl State {
             }
             match (&self.lc_active, &mut stack, b) {
                 (None, [_, Some(('/', _))], '/')
-                    if params
-                        .version
-                        .ver_ge(CVersion::C99, CppVersion::Min) =>
+                    if params.version.ver_ge(CVersion::C99, CppVersion::Min) =>
                 {
                     handle_comment_start!(CommentType::SingleLine);
                     return;
@@ -286,15 +259,11 @@ impl State {
                 (None, [_, Some(('/', _))], '*') => {
                     handle_comment_start!(CommentType::MultiLine);
                     return;
-                },
-                (
-                    Some((CommentType::MultiLine, _)),
-                    [_, Some(('*', _))],
-                    '/',
-                ) => {
+                }
+                (Some((CommentType::MultiLine, _)), [_, Some(('*', _))], '/') => {
                     self.lc_active = None;
                     return;
-                },
+                }
                 _ => (),
             }
         }
@@ -316,11 +285,7 @@ pub struct Output {
 //
 // TODO: Officially, newlines are either '\n', '\r' or '\r\n'.... however, we
 // only treat '\n' as a newline.
-pub fn preproc_phases_1_to_3(
-    file: &str,
-    filename: &str,
-    params: &Params,
-) -> Output {
+pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Output {
     let mut stacks: [CharStack; 2] = [[None, None], [None, None]];
     let mut state = State::new(filename, &file);
 
@@ -333,22 +298,28 @@ pub fn preproc_phases_1_to_3(
     // end.
     //
     // But before that, we issue a warning if the behaviour is undefined.
-    if params.version.ver_le(CVersion::Max, CppVersion::Cpp03)
-        && file.len() != 0
-    {
+    if params.version.ver_le(CVersion::Max, CppVersion::Cpp03) && file.len() != 0 {
         if &file[file.len() - 1..file.len()] != "\n"
             || &file[file.len() - 2..file.len() - 1] == "\\"
         {
             state.issues.push(Issue::new(
-                Location::new(
+                Some(Location::new(
                     filename.to_string(),
                     file.lines().count(),
                     file.lines().nth_back(0).unwrap().len(),
-                ),
+                )),
                 IssueType::Warning,
                 IssueDesc::FileEndMissingNewline,
             ));
         }
+    }
+
+    if params.trigraphs && params.version.ver_ge(CVersion::Max, CppVersion::Cpp14) {
+        state.issues.push(Issue::new(
+            None,
+            IssueType::Warning,
+            IssueDesc::TrigraphAndVersionConflict,
+        ));
     }
 
     state.process_char(params, &mut stacks, '\n');
@@ -364,25 +335,25 @@ pub fn preproc_phases_1_to_3(
     match state.lc_active {
         Some((CommentType::SingleLine, _)) => {
             panic!("Single line comment not at {:?}", state.lc_active)
-        },
+        }
         Some((CommentType::MultiLine, loc)) => {
             state.issues.push(Issue::new(
-                loc,
+                Some(loc),
                 IssueType::Error,
                 IssueDesc::MultilineCommentNotClosed,
             ));
-        },
+        }
         _ => (),
     }
 
     match state.quot_active {
         Some((q, loc)) => {
             state.issues.push(Issue::new(
-                loc,
+                Some(loc),
                 IssueType::Error,
                 IssueDesc::QuotationMarkNotClosed(q),
             ));
-        },
+        }
         _ => (),
     }
 
