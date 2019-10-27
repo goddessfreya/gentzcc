@@ -300,38 +300,176 @@ fn quote_comment() {
     }
 }
 
-/*/*/*/*/*
+#[test]
+fn line_merge_simple() {
+    for m in &[" ", ""] {
+        do_every(
+            &(String::from("b") + m + "\\\nc\n"),
+            Default::default(),
+            |src, params, conv| {
+                assert_eq!(
+                    preproc_phases_1_to_3(src, &*FILENAME, params,),
+                    Output {
+                        num_spaces: 1,
+                        new_file: String::from("\n"),
+                        issues: add_tri_issue(vec![], params, conv),
+                        loc_mapping: locations(params, vec![]),
+                    },
+                )
+            },
+        );
+    }
+}
 
-a // b
+#[test]
+fn singleline_merge_comment() {
+    do_every(
+        "a // b \\\\\nc\nd\ne\n",
+        Default::default(),
+        |src, params, conv| {
+            assert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params,),
+                Output {
+                    num_spaces: 1,
+                    new_file: String::from("\n"),
+                    issues: add_tri_issue(vec![], params, conv),
+                    loc_mapping: locations(params, vec![]),
+                },
+            )
+        },
+    );
+}
 
-a // \\\\
-b
-c
-d
+#[test]
+fn multilineline_merge_comment() {
+    do_every(
+        "a // b \\\nc \\\nd\ne\n",
+        Default::default(),
+        |src, params, conv| {
+            assert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params,),
+                Output {
+                    num_spaces: 1,
+                    new_file: String::from("\n"),
+                    issues: add_tri_issue(vec![], params, conv),
+                    loc_mapping: locations(params, vec![]),
+                },
+            )
+        },
+    );
+}
 
-a // \\
-b \\
-c
-d
+#[test]
+fn multiline_comment() {
+    do_every("a /* b */ c\n", Default::default(), |src, params, conv| {
+        assert_eq!(
+            preproc_phases_1_to_3(src, &*FILENAME, params,),
+            Output {
+                num_spaces: 1,
+                new_file: String::from("\n"),
+                issues: add_tri_issue(vec![], params, conv),
+                loc_mapping: locations(params, vec![]),
+            },
+        )
+    });
+}
 
-a b \\
-c d e
+#[test]
+fn multiline_comment_split() {
+    do_every(
+        "a /* b\nc */ d\n",
+        Default::default(),
+        |src, params, conv| {
+            assert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params,),
+                Output {
+                    num_spaces: 1,
+                    new_file: String::from("\n"),
+                    issues: add_tri_issue(vec![], params, conv),
+                    loc_mapping: locations(params, vec![]),
+                },
+            )
+        },
+    );
+}
 
-a /* b
-c */ d
+#[test]
+fn multiline_comment_merge() {
+    do_every(
+        "a /* b \\\nc */ d\n",
+        Default::default(),
+        |src, params, conv| {
+            assert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params,),
+                Output {
+                    num_spaces: 1,
+                    new_file: String::from("\n"),
+                    issues: add_tri_issue(vec![], params, conv),
+                    loc_mapping: locations(params, vec![]),
+                },
+            )
+        },
+    );
+}
 
-a /* b \\
-c */ d
+#[test]
+fn singleline_comment_merge_split() {
+    do_every(
+        "a /\\\n* b *\\\n/ c\n",
+        Default::default(),
+        |src, params, conv| {
+            assert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params,),
+                Output {
+                    num_spaces: 1,
+                    new_file: String::from("\n"),
+                    issues: add_tri_issue(vec![], params, conv),
+                    loc_mapping: locations(params, vec![]),
+                },
+            )
+        },
+    );
+}
 
-a /* b */ c
+#[test]
+fn absent_newline() {
+    for ending in &["", "\\\n"] {
+        do_every(
+            &(String::from("a") + ending),
+            Default::default(),
+            |src, params, conv| {
+                assert_eq!(
+                    preproc_phases_1_to_3(src, &*FILENAME, params,),
+                    Output {
+                        num_spaces: 1,
+                        new_file: String::from("\n"),
+                        issues: add_tri_issue(vec![], params, conv),
+                        loc_mapping: locations(params, vec![]),
+                    },
+                )
+            },
+        );
+    }
+}
 
-a /\\
-* b */ c
-
-a /\\
-/ b // c
-
-*/*/*/*/
+#[test]
+fn multiline_comment_merge_split() {
+    do_every(
+        "a /\\\n* b *\\\n/ c\n",
+        Default::default(),
+        |src, params, conv| {
+            assert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params,),
+                Output {
+                    num_spaces: 1,
+                    new_file: String::from("\n"),
+                    issues: add_tri_issue(vec![], params, conv),
+                    loc_mapping: locations(params, vec![]),
+                },
+            )
+        },
+    );
+}
 
 #[test]
 fn cross_quote_line_merge() {
