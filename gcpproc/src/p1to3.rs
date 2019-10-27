@@ -169,6 +169,8 @@ impl State {
             }
         }
 
+        // TODO: if a line doesn't start in a `#`, and we are not in a quote,
+        // treating the new lines as spaces should increase our cache hits.
         if b == '\n' {
             if stack[1].as_ref().map(|s| s.0) != Some('\\') {
                 if let Some(ref mut lca) = self.lc_active {

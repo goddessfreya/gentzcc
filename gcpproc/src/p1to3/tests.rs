@@ -144,14 +144,14 @@ fn singleline_merge() {
     const NEWLINES: usize = 8;
     const SLASHES: usize = 5;
     do_every(
-        &(String::from("a") + &"\\".repeat(SLASHES) + &"\n".repeat(NEWLINES) + "b\n"),
+        &(String::from("#a") + &"\\".repeat(SLASHES) + &"\n".repeat(NEWLINES) + "b\n"),
         Default::default(),
         |src, params, conv| {
             assert_eq!(
                 preproc_phases_1_to_3(src, &*FILENAME, params,),
                 Output {
                     num_spaces: 3,
-                    new_file: String::from("\na") + &"\\".repeat(SLASHES - 1) + "\nb\n",
+                    new_file: String::from("\n#a") + &"\\".repeat(SLASHES - 1) + "\nb\n",
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(
                         params,
@@ -177,16 +177,16 @@ fn singleline_merge_nonblank() {
     const NEWLINES: usize = 8;
     const SLASHES: usize = 5;
     do_every(
-        &(String::from("a") + &"\\".repeat(SLASHES) + &"\nb".repeat(NEWLINES) + "\n"),
+        &(String::from("#a") + &"\\".repeat(SLASHES) + &"\n#b".repeat(NEWLINES) + "\n"),
         Default::default(),
         |src, params, conv| {
             assert_eq!(
                 preproc_phases_1_to_3(src, &*FILENAME, params,),
                 Output {
                     num_spaces: NEWLINES + 1,
-                    new_file: String::from("\na")
+                    new_file: String::from("\n#a")
                         + &"\\".repeat(SLASHES - 1)
-                        + &"b\n".repeat(NEWLINES),
+                        + &"#b\n".repeat(NEWLINES),
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(
                         params,
@@ -210,7 +210,7 @@ fn singleline_merge_nonblank() {
 #[test]
 fn header_comment() {
     do_every(
-        "a < b // c > d\n",
+        "#a < b // c > d\n",
         Default::default(),
         |src, params, conv| {
             assert_eq!(
@@ -221,8 +221,8 @@ fn header_comment() {
                         _ => 4,
                     },
                     new_file: String::from(match params.version {
-                        Version::C(CVersion::C89) => "\na < b // c > d\n",
-                        _ => "\na < b\n",
+                        Version::C(CVersion::C89) => "\n#a < b // c > d\n",
+                        _ => "\n#a < b\n",
                     }),
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(
@@ -241,14 +241,14 @@ fn header_comment() {
 #[test]
 fn header_multicomment() {
     do_every(
-        "a < b /* c > d */ e\n",
+        "#a < b /* c > d */ e\n",
         Default::default(),
         |src, params, conv| {
             assert_eq!(
                 preproc_phases_1_to_3(src, &*FILENAME, params,),
                 Output {
                     num_spaces: 5,
-                    new_file: String::from("\na < b e\n"),
+                    new_file: String::from("\n#a < b e\n"),
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(
                         params,
@@ -273,14 +273,14 @@ fn header_multicomment() {
 fn quote_comment() {
     for quo in &["'", "\""] {
         do_every(
-            &(String::from("a ") + quo + " b // c /* d */ e /* f " + quo + " g */ h\n"),
+            &(String::from("#a ") + quo + " b // c /* d */ e /* f " + quo + " g */ h\n"),
             Default::default(),
             |src, params, conv| {
                 assert_eq!(
                     preproc_phases_1_to_3(src, &*FILENAME, params,),
                     Output {
                         num_spaces: 16,
-                        new_file: String::from("\na ")
+                        new_file: String::from("\n#a ")
                             + quo
                             + " b // c /* d */ e /* f "
                             + quo
@@ -304,7 +304,7 @@ fn quote_comment() {
 fn line_merge_simple() {
     for m in &[" ", ""] {
         do_every(
-            &(String::from("b") + m + "\\\nc\n"),
+            &(String::from("#b") + m + "\\\n#c\n"),
             Default::default(),
             |src, params, conv| {
                 assert_eq!(
@@ -324,7 +324,7 @@ fn line_merge_simple() {
 #[test]
 fn singleline_merge_comment() {
     do_every(
-        "a // b \\\\\nc\nd\ne\n",
+        "#a // b \\\\\n#c\n#d\n#e\n",
         Default::default(),
         |src, params, conv| {
             assert_eq!(
@@ -343,7 +343,7 @@ fn singleline_merge_comment() {
 #[test]
 fn multilineline_merge_comment() {
     do_every(
-        "a // b \\\nc \\\nd\ne\n",
+        "#a // b \\\n#c \\\n#d\n#e\n",
         Default::default(),
         |src, params, conv| {
             assert_eq!(
@@ -361,7 +361,7 @@ fn multilineline_merge_comment() {
 
 #[test]
 fn multiline_comment() {
-    do_every("a /* b */ c\n", Default::default(), |src, params, conv| {
+    do_every("#a /* b */ c\n", Default::default(), |src, params, conv| {
         assert_eq!(
             preproc_phases_1_to_3(src, &*FILENAME, params,),
             Output {
@@ -377,7 +377,7 @@ fn multiline_comment() {
 #[test]
 fn multiline_comment_split() {
     do_every(
-        "a /* b\nc */ d\n",
+        "#a /* b\n#c */ d\n",
         Default::default(),
         |src, params, conv| {
             assert_eq!(
@@ -396,7 +396,7 @@ fn multiline_comment_split() {
 #[test]
 fn multiline_comment_merge() {
     do_every(
-        "a /* b \\\nc */ d\n",
+        "#a /* b \\\n#c */ d\n",
         Default::default(),
         |src, params, conv| {
             assert_eq!(
@@ -415,7 +415,26 @@ fn multiline_comment_merge() {
 #[test]
 fn singleline_comment_merge_split() {
     do_every(
-        "a /\\\n* b *\\\n/ c\n",
+        "#a /\\\n/ b /\\\n/ c\n",
+        Default::default(),
+        |src, params, conv| {
+            assert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params,),
+                Output {
+                    num_spaces: 1,
+                    new_file: String::from("\n"),
+                    issues: add_tri_issue(vec![], params, conv),
+                    loc_mapping: locations(params, vec![]),
+                },
+            )
+        },
+    );
+}
+
+#[test]
+fn multiline_comment_merge_split() {
+    do_every(
+        "#a /\\\n* b *\\\n/ c\n",
         Default::default(),
         |src, params, conv| {
             assert_eq!(
@@ -435,7 +454,7 @@ fn singleline_comment_merge_split() {
 fn absent_newline() {
     for ending in &["", "\\\n"] {
         do_every(
-            &(String::from("a") + ending),
+            &(String::from("#a") + ending),
             Default::default(),
             |src, params, conv| {
                 assert_eq!(
@@ -453,35 +472,16 @@ fn absent_newline() {
 }
 
 #[test]
-fn multiline_comment_merge_split() {
-    do_every(
-        "a /\\\n* b *\\\n/ c\n",
-        Default::default(),
-        |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
-                Output {
-                    num_spaces: 1,
-                    new_file: String::from("\n"),
-                    issues: add_tri_issue(vec![], params, conv),
-                    loc_mapping: locations(params, vec![]),
-                },
-            )
-        },
-    );
-}
-
-#[test]
 fn cross_quote_line_merge() {
     for m in &[" ", ""] {
         for qchar in &[(true, '\'', '\''), (false, '<', '>'), (true, '"', '"')] {
             eprintln!("Testing for m {:?}, qchar {:?}", m, qchar);
             do_every(
-                &(String::from("a ")
+                &(String::from("#a ")
                     + &qchar.1.to_string()
                     + " b"
                     + m
-                    + "\\\nc "
+                    + "\\\n#c "
                     + &qchar.2.to_string()
                     + " d\n"),
                 Default::default(),
@@ -495,11 +495,11 @@ fn cross_quote_line_merge() {
                             new_file: if owpt {
                                 "\n".to_string() + src
                             } else {
-                                String::from("\na ")
+                                String::from("\n#a ")
                                     + &qchar.1.to_string()
                                     + " b"
                                     + m
-                                    + "c "
+                                    + "#c "
                                     + &qchar.2.to_string()
                                     + " d\n"
                             },
