@@ -130,9 +130,9 @@ fn blank() {
         assert_eq!(
             preproc_phases_1_to_3(src, &*FILENAME, params,),
             Output {
-                num_spaces:  1,
-                new_file:    String::from("\n"),
-                issues:      add_tri_issue(vec![], params, conv),
+                num_spaces: 1,
+                new_file: String::from("\n"),
+                issues: add_tri_issue(vec![], params, conv),
                 loc_mapping: locations(params, vec![]),
             },
         )
@@ -150,9 +150,9 @@ fn singleline_merge() {
             assert_eq!(
                 preproc_phases_1_to_3(src, &*FILENAME, params,),
                 Output {
-                    num_spaces:  3,
-                    new_file:    String::from("\na") + &"\\".repeat(SLASHES - 1) + "\nb\n",
-                    issues:      add_tri_issue(vec![], params, conv),
+                    num_spaces: 3,
+                    new_file: String::from("\na") + &"\\".repeat(SLASHES - 1) + "\nb\n",
+                    issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(
                         params,
                         vec![
@@ -183,11 +183,11 @@ fn singleline_merge_nonblank() {
             assert_eq!(
                 preproc_phases_1_to_3(src, &*FILENAME, params,),
                 Output {
-                    num_spaces:  NEWLINES + 1,
-                    new_file:    String::from("\na")
+                    num_spaces: NEWLINES + 1,
+                    new_file: String::from("\na")
                         + &"\\".repeat(SLASHES - 1)
                         + &"b\n".repeat(NEWLINES),
-                    issues:      add_tri_issue(vec![], params, conv),
+                    issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(
                         params,
                         vec![
@@ -216,15 +216,15 @@ fn header_comment() {
             assert_eq!(
                 preproc_phases_1_to_3(src, &*FILENAME, params,),
                 Output {
-                    num_spaces:  match params.version {
+                    num_spaces: match params.version {
                         Version::C(CVersion::C89) => 8,
                         _ => 4,
                     },
-                    new_file:    String::from(match params.version {
+                    new_file: String::from(match params.version {
                         Version::C(CVersion::C89) => "\na < b // c > d\n",
                         _ => "\na < b\n",
                     }),
-                    issues:      add_tri_issue(vec![], params, conv),
+                    issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(
                         params,
                         vec![(
@@ -247,9 +247,9 @@ fn header_multicomment() {
             assert_eq!(
                 preproc_phases_1_to_3(src, &*FILENAME, params,),
                 Output {
-                    num_spaces:  5,
-                    new_file:    String::from("\na < b e\n"),
-                    issues:      add_tri_issue(vec![], params, conv),
+                    num_spaces: 5,
+                    new_file: String::from("\na < b e\n"),
+                    issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(
                         params,
                         vec![
@@ -279,13 +279,13 @@ fn quote_comment() {
                 assert_eq!(
                     preproc_phases_1_to_3(src, &*FILENAME, params,),
                     Output {
-                        num_spaces:  16,
-                        new_file:    String::from("\na ")
+                        num_spaces: 16,
+                        new_file: String::from("\na ")
                             + quo
                             + " b // c /* d */ e /* f "
                             + quo
                             + " g */ h\n",
-                        issues:      add_tri_issue(vec![], params, conv),
+                        issues: add_tri_issue(vec![], params, conv),
                         loc_mapping: locations(
                             params,
                             vec![(
@@ -349,13 +349,12 @@ fn cross_quote_line_merge() {
                 Default::default(),
                 |src, params, conv| {
                     let owpt = output_will_preserve_trigraphs(params, conv);
-                    let ms = 6 + if *m == " " { 1 } else {0 };
+                    let ms = 6 + if *m == " " { 1 } else { 0 };
                     assert_eq!(
                         preproc_phases_1_to_3(src, &*FILENAME, params,),
                         Output {
-                            num_spaces:  ms
-                                + if owpt { 1 } else { 0 },
-                            new_file:    if owpt {
+                            num_spaces: ms + if owpt { 1 } else { 0 },
+                            new_file: if owpt {
                                 "\n".to_string() + src
                             } else {
                                 String::from("\na ")
@@ -366,7 +365,7 @@ fn cross_quote_line_merge() {
                                     + &qchar.2.to_string()
                                     + " d\n"
                             },
-                            issues:      add_tri_issue(
+                            issues: add_tri_issue(
                                 vec![
                                     (
                                         false,
@@ -412,15 +411,7 @@ fn cross_quote_line_merge() {
                                 .chain(if !owpt {
                                     Some((
                                         true,
-                                        (
-                                            location(2, 1, 0, params),
-                                            location(
-                                                2,
-                                                ms,
-                                                0,
-                                                params,
-                                            ),
-                                        ),
+                                        (location(2, 1, 0, params), location(2, ms, 0, params)),
                                     ))
                                 } else {
                                     None

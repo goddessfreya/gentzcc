@@ -80,7 +80,7 @@ pub struct Params {
 impl Default for Params {
     fn default() -> Self {
         Params {
-            trigraphs:  false,
+            trigraphs: false,
             wtrigraphs: true,
             // NOTE: gcc's default for C is C11, and for C++ it's C++14.
             // Remember to decide between the two based on fileext.
@@ -95,8 +95,8 @@ pub type CharNumber = usize;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Location {
     pub filename: String,
-    pub nline:    Option<LineNumber>,
-    pub nchar:    Option<CharNumber>,
+    pub nline: Option<LineNumber>,
+    pub nchar: Option<CharNumber>,
 }
 
 impl Location {
@@ -120,9 +120,9 @@ impl Location {
 /// Describes a diagnostic message that we've encountered.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Issue {
-    pub loc:   Option<Location>,
+    pub loc: Option<Location>,
     pub itype: IssueType,
-    pub desc:  IssueDesc,
+    pub desc: IssueDesc,
 }
 
 impl Issue {

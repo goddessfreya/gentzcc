@@ -19,33 +19,33 @@ enum CommentType {
 
 #[derive(Debug)]
 struct State {
-    lc_active:      Option<(CommentType, Location)>,
-    quot_active:    Option<(char, Location)>,
-    new_file:       String,
+    lc_active: Option<(CommentType, Location)>,
+    quot_active: Option<(char, Location)>,
+    new_file: String,
     non_multimerge: bool,
-    cloc:           Location,
-    oloc:           Location,
-    last_add:       Option<char>,
+    cloc: Location,
+    oloc: Location,
+    last_add: Option<char>,
     // We use the number of spaces to guess the number of tokens we will
     // end up having for lalrpop.
-    num_spaces:  usize,
-    issues:      Vec<Issue>,
+    num_spaces: usize,
+    issues: Vec<Issue>,
     loc_mapping: Vec<(Location, Location)>,
 }
 
 impl State {
     fn new(filename: &str, file: &str) -> Self {
         State {
-            lc_active:      None,
-            quot_active:    None,
-            new_file:       String::with_capacity(file.len()),
+            lc_active: None,
+            quot_active: None,
+            new_file: String::with_capacity(file.len()),
             non_multimerge: false,
-            cloc:           Location::new(filename.to_string(), 0, 0),
-            oloc:           Location::new(filename.to_string(), 1, 0),
-            last_add:       None,
-            num_spaces:     0,
-            issues:         vec![],
-            loc_mapping:    Vec::with_capacity(file.len() / 10),
+            cloc: Location::new(filename.to_string(), 0, 0),
+            oloc: Location::new(filename.to_string(), 1, 0),
+            last_add: None,
+            num_spaces: 0,
+            issues: vec![],
+            loc_mapping: Vec::with_capacity(file.len() / 10),
         }
     }
 
@@ -274,9 +274,9 @@ impl State {
 
 #[derive(Debug, PartialEq)]
 pub struct Output {
-    pub num_spaces:  usize,
-    pub new_file:    String,
-    pub issues:      Vec<Issue>,
+    pub num_spaces: usize,
+    pub new_file: String,
+    pub issues: Vec<Issue>,
     pub loc_mapping: Vec<(Location, Location)>,
 }
 
@@ -358,9 +358,9 @@ pub fn preproc_phases_1_to_3(file: &str, filename: &str, params: &Params) -> Out
     }
 
     Output {
-        num_spaces:  state.num_spaces,
-        new_file:    state.new_file,
-        issues:      state.issues,
+        num_spaces: state.num_spaces,
+        new_file: state.new_file,
+        issues: state.issues,
         loc_mapping: state.loc_mapping,
     }
 }

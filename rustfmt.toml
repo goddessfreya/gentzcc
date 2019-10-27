@@ -1,2 +1,1 @@
-struct_field_align_threshold = 30
 use_field_init_shorthand = true
