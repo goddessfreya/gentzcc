@@ -1,3 +1,4 @@
+#![macro_escape]
 //! Common files for preprocessor.
 
 /// All the parameters the preprocessor cares about.
@@ -126,7 +127,11 @@ pub struct Issue {
 }
 
 impl Issue {
-    pub fn new(loc: Option<Location>, itype: IssueType, desc: IssueDesc) -> Self {
+    pub fn new(
+        loc: Option<Location>,
+        itype: IssueType,
+        desc: IssueDesc,
+    ) -> Self {
         Issue { loc, itype, desc }
     }
 }
@@ -209,4 +214,40 @@ impl Version {
     CVersionCmp!(ver_eq, ==);
 
     CVersionCmp!(ver_ne, !=);
+}
+
+// Formated assert_eq
+macro_rules! fassert_eq {
+    ($left:expr, $right:expr) => ({
+        match (&$left, &$right) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    // The reborrows below are intentional. Without them, the stack slot for the
+                    // borrow is initialized even before the values are compared, leading to a
+                    // noticeable slow down.
+                    panic!(r#"assertion failed: `(left == right)`
+  left: `{:#?}`,
+ right: `{:#?}`"#, &*left_val, &*right_val)
+                }
+            }
+        }
+    });
+    ($left:expr, $right:expr,) => ({
+        fassert_eq!($left, $right)
+    });
+    ($left:expr, $right:expr, $($arg:tt)+) => ({
+        match (&($left), &($right)) {
+            (left_val, right_val) => {
+                if !(*left_val == *right_val) {
+                    // The reborrows below are intentional. Without them, the stack slot for the
+                    // borrow is initialized even before the values are compared, leading to a
+                    // noticeable slow down.
+                    panic!(r#"assertion failed: `(left == right)`
+  left: `{:#?}`,
+ right: `{:#?}`: {}"#, &*left_val, &*right_val,
+                           format_args!($($arg)+))
+                }
+            }
+        }
+    });
 }

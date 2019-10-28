@@ -1,6 +1,7 @@
 use super::*;
 use crate::common::{
-    CVersion, CharNumber, Issue, IssueDesc, IssueType, LineNumber, Params, Version,
+    CVersion, CharNumber, Issue, IssueDesc, IssueType, LineNumber, Params,
+    Version,
 };
 
 lazy_static! {
@@ -33,8 +34,8 @@ fn trigraphify(s: &str) -> String {
 }
 
 fn do_every<F: Fn(&str, &Params, bool)>(src: &str, mut params: Params, f: F) {
-    for trigraphs in &[true, false] {
-        for conv in &[true, false] {
+    for trigraphs in &[false, true] {
+        for conv in &[false, true] {
             for wtrigraphs in &[true, false] {
                 params.wtrigraphs = *wtrigraphs;
                 for v in &EVERY_VERSION {
@@ -58,7 +59,9 @@ fn do_every<F: Fn(&str, &Params, bool)>(src: &str, mut params: Params, f: F) {
 
 fn output_will_preserve_trigraphs(params: &Params, conv: bool) -> bool {
     if conv {
-        if !params.trigraphs || params.version.ver_ge(CVersion::Max, CppVersion::Cpp14) {
+        if !params.trigraphs
+            || params.version.ver_ge(CVersion::Max, CppVersion::Cpp14)
+        {
             true
         } else {
             false
@@ -68,12 +71,19 @@ fn output_will_preserve_trigraphs(params: &Params, conv: bool) -> bool {
     }
 }
 
-fn add_tri_issue(mut issues: Vec<(bool, Issue)>, params: &Params, conv: bool) -> Vec<Issue> {
-    if params.trigraphs && params.version.ver_ge(CVersion::Max, CppVersion::Cpp14) {
+fn add_tri_issue(
+    mut issues: Vec<(NeedConv, NeedOWPT, Issue)>,
+    params: &Params,
+    conv: bool,
+) -> Vec<Issue> {
+    if params.trigraphs
+        && params.version.ver_ge(CVersion::Max, CppVersion::Cpp14)
+    {
         issues.insert(
             0,
             (
-                false,
+                NeedConv::No,
+                NeedOWPT::No,
                 Issue::new(
                     None,
                     IssueType::Warning,
@@ -83,43 +93,80 @@ fn add_tri_issue(mut issues: Vec<(bool, Issue)>, params: &Params, conv: bool) ->
         );
     }
 
+    let owpt = output_will_preserve_trigraphs(params, conv);
     issues
         .into_iter()
-        .filter_map(|(preserved_only, i)| match i.desc {
-            IssueDesc::TrigraphPresent(_) if !params.wtrigraphs || !conv => None,
-            IssueDesc::TrigraphPresentAndIgnored(_)
-                if (params.version.ver_ls(CVersion::Max, CppVersion::Cpp14)
-                    && params.trigraphs)
-                    || !conv =>
-            {
-                None
-            }
-            _ if preserved_only && !output_will_preserve_trigraphs(params, conv) => None,
-            _ => Some(i),
+        .filter_map(|(nconv, nowpt, i)| match nowpt {
+            NeedOWPT::Yes if !owpt => None,
+            NeedOWPT::Invalid if owpt => None,
+            _ => match nconv {
+                NeedConv::Yes if !conv => None,
+                NeedConv::Invalid if conv => None,
+                _ => Some(i),
+            },
         })
+        .filter_map(|mut i| match i.desc {
+            IssueDesc::TrigraphPresent(c) => {
+                let tp = if !params.wtrigraphs || !conv {
+                    None
+                } else {
+                    Some(i.clone())
+                };
+                let tpi =
+                    if (params.version.ver_ls(CVersion::Max, CppVersion::Cpp14)
+                        && params.trigraphs)
+                        || !conv
+                    {
+                        None
+                    } else {
+                        i.desc = IssueDesc::TrigraphPresentAndIgnored(c);
+                        Some(i)
+                    };
+                Some((tp, tpi))
+            }
+            _ => Some((Some(i), None)),
+        })
+        .flat_map(|(a, b)| vec![a, b])
+        .filter_map(|a| a)
         .collect()
 }
 
-fn location(nline: LineNumber, nchar: CharNumber, tris: CharNumber, params: &Params) -> Location {
-    Location::new(
-        FILENAME.clone(),
-        nline,
-        nchar + if params.trigraphs { tris } else { 0 },
-    )
+macro_rules! location {
+    ($nline:expr, $nchar:expr) => {{
+        Location::new(FILENAME.clone(), $nline, $nchar)
+    }};
+}
+
+#[derive(Debug, PartialEq)]
+enum NeedConv {
+    Yes,
+    No,
+    Invalid,
+}
+
+#[derive(Debug, PartialEq)]
+enum NeedOWPT {
+    Yes,
+    No,
+    Invalid,
 }
 
 fn locations(
     params: &Params,
-    loc_mapping: Vec<(bool, (Location, Location))>,
+    conv: bool,
+    loc_mapping: Vec<(NeedConv, NeedOWPT, (Location, Location))>,
 ) -> Vec<(Location, Location)> {
+    let owpt = output_will_preserve_trigraphs(params, conv);
     loc_mapping
         .into_iter()
-        .filter_map(|(always, l)| {
-            if params.trigraphs || always {
-                Some(l)
-            } else {
-                None
-            }
+        .filter_map(|(nconv, nowpt, l)| match nowpt {
+            NeedOWPT::Yes if !owpt => None,
+            NeedOWPT::Invalid if owpt => None,
+            _ => match nconv {
+                NeedConv::Yes if !conv => None,
+                NeedConv::Invalid if conv => None,
+                _ => Some(l),
+            },
         })
         .collect()
 }
@@ -127,16 +174,312 @@ fn locations(
 #[test]
 fn blank() {
     do_every("", Default::default(), |src, params, conv| {
-        assert_eq!(
-            preproc_phases_1_to_3(src, &*FILENAME, params,),
+        fassert_eq!(
+            preproc_phases_1_to_3(src, &*FILENAME, params),
             Output {
-                num_spaces: 1,
                 new_file: String::from("\n"),
                 issues: add_tri_issue(vec![], params, conv),
-                loc_mapping: locations(params, vec![]),
+                loc_mapping: locations(params, conv, vec![]),
             },
         )
     });
+}
+
+#[test]
+fn absent_newline() {
+    for ending in &["", "\\\n"] {
+        eprintln!("Testing for ending {:?}", ending);
+        do_every(
+            &(String::from("#a\n#a") + ending),
+            Default::default(),
+            |src, params, conv| {
+                let owpt = output_will_preserve_trigraphs(params, conv);
+                fassert_eq!(
+                    preproc_phases_1_to_3(src, &*FILENAME, params),
+                    Output {
+                        new_file: if owpt {
+                            "\n".to_string()
+                                + src
+                                + if !owpt || *ending == "" { "\n" } else { "" }
+                        } else {
+                            String::from("\n#a\n#a\n")
+                        },
+                        issues: add_tri_issue(
+                            if params
+                                .version
+                                .ver_le(CVersion::Max, CppVersion::Cpp03)
+                            {
+                                Some((
+                                    NeedConv::No,
+                                    NeedOWPT::No,
+                                    Issue::new(
+                                        None,
+                                        IssueType::Warning,
+                                        IssueDesc::FileEndMissingNewline,
+                                    ),
+                                ))
+                            } else {
+                                None
+                            }
+                            .into_iter()
+                            .chain(vec![
+                                (
+                                    NeedConv::No,
+                                    NeedOWPT::No,
+                                    Issue::new(
+                                        Some(location!(1, 1)),
+                                        IssueType::Warning,
+                                        IssueDesc::TrigraphPresent('=')
+                                    )
+                                ),
+                                (
+                                    NeedConv::No,
+                                    NeedOWPT::No,
+                                    Issue::new(
+                                        Some(location!(2, 1)),
+                                        IssueType::Warning,
+                                        IssueDesc::TrigraphPresent('=')
+                                    )
+                                ),
+                            ])
+                            .chain(if *ending == "\\\n" {
+                                vec![(
+                                    NeedConv::No,
+                                    NeedOWPT::No,
+                                    Issue::new(
+                                        Some(location!(2, 5)),
+                                        IssueType::Warning,
+                                        IssueDesc::TrigraphPresent('/'),
+                                    ),
+                                )]
+                            } else {
+                                vec![]
+                            })
+                            .collect(),
+                            params,
+                            conv
+                        ),
+                        loc_mapping: locations(
+                            params,
+                            conv,
+                            vec![
+                                (
+                                    NeedConv::No,
+                                    NeedOWPT::No,
+                                    (location!(1, 1), location!(2, 1))
+                                ),
+                                (
+                                    NeedConv::Yes,
+                                    NeedOWPT::Invalid,
+                                    (location!(1, 4), location!(2, 2))
+                                ),
+                                (
+                                    NeedConv::Yes,
+                                    NeedOWPT::Invalid,
+                                    (location!(2, 4), location!(3, 2))
+                                ),
+                            ]
+                        ),
+                    },
+                )
+            },
+        );
+    }
+}
+
+#[test]
+fn unifty_non_preproc() {
+    do_every("a\nb\nc\nd\n", Default::default(), |src, params, conv| {
+        fassert_eq!(
+            preproc_phases_1_to_3(src, &*FILENAME, params),
+            Output {
+                new_file: String::from("\na\nb\nc\nd\n"),
+                issues: add_tri_issue(vec![], params, conv),
+                loc_mapping: locations(
+                    params,
+                    conv,
+                    vec![(
+                        NeedConv::No,
+                        NeedOWPT::No,
+                        (location!(1, 1), location!(2, 1))
+                    ),]
+                ),
+            },
+        )
+    });
+}
+
+#[test]
+fn unifty_mixed_preproc() {
+    do_every(
+        "a\n#b\\\nc\\\nd\ne\nf\n#g\\\nh\\\n#i\\\n#j\nk\nl#\nm\nn\n",
+        Default::default(),
+        |src, params, conv| {
+            let owpt = output_will_preserve_trigraphs(params, conv);
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
+                Output {
+                    new_file: if owpt {
+                        String::from("\n") + src
+                    } else {
+                        String::from("\na\n#bcd\ne\nf\n#gh#i#j\nk\nl#\nm\nn\n")
+                    },
+                    issues: add_tri_issue(
+                        vec![
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(2, 1)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('=')
+                                )
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(2, 5)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('/')
+                                )
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(3, 2)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('/')
+                                )
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(7, 1)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('=')
+                                )
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(7, 5)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('/')
+                                )
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(8, 2)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('/')
+                                )
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(9, 1)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('=')
+                                )
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(9, 5)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('/')
+                                )
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(10, 1)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('=')
+                                )
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(12, 2)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('=')
+                                )
+                            ),
+                        ],
+                        params,
+                        conv
+                    ),
+                    loc_mapping: locations(
+                        params,
+                        conv,
+                        vec![
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                (location!(1, 1), location!(2, 1))
+                            ),
+                            (
+                                NeedConv::Yes,
+                                NeedOWPT::Invalid,
+                                (location!(2, 4), location!(3, 2))
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::Invalid,
+                                (location!(3, 1), location!(3, 3))
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::Invalid,
+                                (location!(4, 1), location!(3, 4))
+                            ),
+                            (
+                                NeedConv::Yes,
+                                NeedOWPT::Invalid,
+                                (location!(7, 4), location!(6, 2))
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::Invalid,
+                                (location!(8, 1), location!(6, 3))
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::Invalid,
+                                (location!(9, 1), location!(6, 4))
+                            ),
+                            (
+                                NeedConv::Yes,
+                                NeedOWPT::Invalid,
+                                (location!(9, 4), location!(6, 5))
+                            ),
+                            (
+                                NeedConv::No,
+                                NeedOWPT::Invalid,
+                                (location!(10, 1), location!(6, 6))
+                            ),
+                            (
+                                NeedConv::Yes,
+                                NeedOWPT::Invalid,
+                                (location!(10, 4), location!(6, 7))
+                            ),
+                        ]
+                    ),
+                },
+            )
+        },
+    );
 }
 
 #[test]
@@ -144,27 +487,85 @@ fn singleline_merge() {
     const NEWLINES: usize = 8;
     const SLASHES: usize = 5;
     do_every(
-        &(String::from("#a") + &"\\".repeat(SLASHES) + &"\n".repeat(NEWLINES) + "b\n"),
+        &(String::from("#a")
+            + &"\\".repeat(SLASHES)
+            + &"\n".repeat(NEWLINES)
+            + "b\n"),
         Default::default(),
         |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
+            let owpt = output_will_preserve_trigraphs(params, conv);
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
-                    num_spaces: 3,
-                    new_file: String::from("\n#a") + &"\\".repeat(SLASHES - 1) + "\nb\n",
-                    issues: add_tri_issue(vec![], params, conv),
+                    new_file: if owpt {
+                        trigraphify(
+                            &(String::from("\n#a")
+                                + &"\\".repeat(SLASHES)
+                                + "\nb\n"),
+                        )
+                    } else {
+                        String::from("\n#a")
+                            + &"\\".repeat(SLASHES - 1)
+                            + "\nb\n"
+                    },
+                    issues: add_tri_issue(
+                        vec![(
+                            NeedConv::No,
+                            NeedOWPT::No,
+                            Issue::new(
+                                Some(location!(1, 1)),
+                                IssueType::Warning,
+                                IssueDesc::TrigraphPresent('=')
+                            )
+                        )]
+                        .into_iter()
+                        .chain((0..SLASHES).into_iter().map(|i| (
+                            NeedConv::No,
+                            NeedOWPT::No,
+                            Issue::new(
+                                Some(location!(1, 5 + i * 3)),
+                                IssueType::Warning,
+                                IssueDesc::TrigraphPresent('/')
+                            )
+                        )))
+                        .collect(),
+                        params,
+                        conv
+                    ),
                     loc_mapping: locations(
                         params,
+                        conv,
                         vec![
                             (
-                                true,
-                                (location(1, 1, 0, params), location(2, 1, 0, params),)
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                (location!(1, 1), location!(2, 1))
                             ),
                             (
-                                true,
-                                (location(NEWLINES, 1, 0, params), location(3, 1, 0, params),)
+                                NeedConv::Yes,
+                                NeedOWPT::Invalid,
+                                (location!(1, 4), location!(2, 2))
                             ),
                         ]
+                        .into_iter()
+                        .chain((0..SLASHES - 2).into_iter().map(|i| (
+                            NeedConv::Yes,
+                            NeedOWPT::Invalid,
+                            (location!(1, 8 + i * 3), location!(2, 4 + i))
+                        )))
+                        .chain(vec![
+                            (
+                                NeedConv::No,
+                                NeedOWPT::Invalid,
+                                (location!(NEWLINES, 1), location!(3, 1))
+                            ),
+                            (
+                                NeedConv::Yes,
+                                NeedOWPT::Yes,
+                                (location!(NEWLINES + 1, 1), location!(3, 1))
+                            )
+                        ])
+                        .collect(),
                     ),
                 },
             )
@@ -177,29 +578,100 @@ fn singleline_merge_nonblank() {
     const NEWLINES: usize = 8;
     const SLASHES: usize = 5;
     do_every(
-        &(String::from("#a") + &"\\".repeat(SLASHES) + &"\n#b".repeat(NEWLINES) + "\n"),
+        dbg!(
+            &(String::from("#a")
+                + &"\\".repeat(SLASHES)
+                + &"\n#b".repeat(NEWLINES)
+                + "\n")
+        ),
         Default::default(),
         |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
+            let owpt = output_will_preserve_trigraphs(params, conv);
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
-                    num_spaces: NEWLINES + 1,
-                    new_file: String::from("\n#a")
-                        + &"\\".repeat(SLASHES - 1)
-                        + &"#b\n".repeat(NEWLINES),
-                    issues: add_tri_issue(vec![], params, conv),
-                    loc_mapping: locations(
-                        params,
-                        vec![
+                    new_file: if owpt {
+                        trigraphify(
+                            &(String::from("\n")
+                                + src))
+                    } else {
+                        String::from("\n#a")
+                            + &"\\".repeat(SLASHES - 1)
+                            + &"#b\n".repeat(NEWLINES)
+                    },
+                    issues: add_tri_issue(vec![
                             (
-                                true,
-                                (location(1, 1, 0, params), location(2, 1, 0, params),)
-                            ),
-                            (
-                                true,
-                                (location(2, 1, 0, params), location(2, 6, 0, params),)
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(1, 1)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('=')
+                                )
                             ),
                         ]
+                        .into_iter()
+                        .chain((0..SLASHES).into_iter().map(|i| (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(1, 5 + i * 3)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('/')
+                                )
+                            )))
+                        .chain((0..NEWLINES).into_iter().map(|i| (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(2 + i, 1)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('=')
+                                )
+                            )))
+                        .collect()
+                    , params, conv),
+                    loc_mapping: locations(
+                        params,
+                        conv,
+                        vec![
+                            (
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                (location!(1, 1), location!(2, 1))
+                            ),
+                            (
+                                NeedConv::Yes,
+                                NeedOWPT::Invalid,
+                                (location!(1, 4), location!(2, 2))
+                            ),
+                        ]
+                        .into_iter()
+                        .chain((0..SLASHES - 2).into_iter().map(|i| (
+                                NeedConv::Yes,
+                                NeedOWPT::Invalid,
+                                (location!(1, 8 + i * 3), location!(2, 4 + i))
+                        )))
+                        .chain(vec![
+                            (
+                                // No Invalid
+                                // Invalid No, Invalid Invalid
+                                NeedConv::No,
+                                NeedOWPT::Invalid,
+                                (location!(2, 1), location!(2, 7))
+                            ),
+                            (
+                                NeedConv::Yes,
+                                NeedOWPT::Invalid,
+                                (location!(2, 4), location!(2, 8))
+                            ),
+                        ])
+                        .chain((0..NEWLINES - 1).into_iter().map(|i| (
+                                NeedConv::Yes,
+                                NeedOWPT::Invalid,
+                                (location!(3 + i, 4), location!(3 + i, 2))
+                        )))
+                        .collect()
                     ),
                 },
             )
@@ -207,19 +679,16 @@ fn singleline_merge_nonblank() {
     );
 }
 
+/*
 #[test]
 fn header_comment() {
     do_every(
         "#a < b // c > d\n",
         Default::default(),
         |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
-                    num_spaces: match params.version {
-                        Version::C(CVersion::C89) => 8,
-                        _ => 4,
-                    },
                     new_file: String::from(match params.version {
                         Version::C(CVersion::C89) => "\n#a < b // c > d\n",
                         _ => "\n#a < b\n",
@@ -229,7 +698,7 @@ fn header_comment() {
                         params,
                         vec![(
                             true,
-                            (location(1, 1, 0, params), location(2, 1, 0, params),)
+                            (location(1, 1, 0, params), location(2, 1, 0, params))
                         ),]
                     ),
                 },
@@ -244,10 +713,9 @@ fn header_multicomment() {
         "#a < b /* c > d */ e\n",
         Default::default(),
         |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
-                    num_spaces: 5,
                     new_file: String::from("\n#a < b e\n"),
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(
@@ -255,11 +723,11 @@ fn header_multicomment() {
                         vec![
                             (
                                 true,
-                                (location(1, 1, 0, params), location(2, 1, 0, params),)
+                                (location(1, 1, 0, params), location(2, 1, 0, params))
                             ),
                             (
                                 true,
-                                (location(1, 19, 0, params), location(2, 7, 0, params),)
+                                (location(1, 19, 0, params), location(2, 7, 0, params))
                             ),
                         ]
                     ),
@@ -276,10 +744,9 @@ fn quote_comment() {
             &(String::from("#a ") + quo + " b // c /* d */ e /* f " + quo + " g */ h\n"),
             Default::default(),
             |src, params, conv| {
-                assert_eq!(
-                    preproc_phases_1_to_3(src, &*FILENAME, params,),
+                fassert_eq!(
+                    preproc_phases_1_to_3(src, &*FILENAME, params),
                     Output {
-                        num_spaces: 16,
                         new_file: String::from("\n#a ")
                             + quo
                             + " b // c /* d */ e /* f "
@@ -290,7 +757,7 @@ fn quote_comment() {
                             params,
                             vec![(
                                 true,
-                                (location(1, 1, 0, params), location(2, 1, 0, params),)
+                                (location(1, 1, 0, params), location(2, 1, 0, params))
                             ),]
                         ),
                     },
@@ -307,10 +774,9 @@ fn line_merge_simple() {
             &(String::from("#b") + m + "\\\n#c\n"),
             Default::default(),
             |src, params, conv| {
-                assert_eq!(
-                    preproc_phases_1_to_3(src, &*FILENAME, params,),
+                fassert_eq!(
+                    preproc_phases_1_to_3(src, &*FILENAME, params),
                     Output {
-                        num_spaces: 1,
                         new_file: String::from("\n"),
                         issues: add_tri_issue(vec![], params, conv),
                         loc_mapping: locations(params, vec![]),
@@ -327,10 +793,9 @@ fn singleline_merge_comment() {
         "#a // b \\\\\n#c\n#d\n#e\n",
         Default::default(),
         |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
-                    num_spaces: 1,
                     new_file: String::from("\n"),
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(params, vec![]),
@@ -346,10 +811,9 @@ fn multilineline_merge_comment() {
         "#a // b \\\n#c \\\n#d\n#e\n",
         Default::default(),
         |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
-                    num_spaces: 1,
                     new_file: String::from("\n"),
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(params, vec![]),
@@ -362,10 +826,9 @@ fn multilineline_merge_comment() {
 #[test]
 fn multiline_comment() {
     do_every("#a /* b */ c\n", Default::default(), |src, params, conv| {
-        assert_eq!(
-            preproc_phases_1_to_3(src, &*FILENAME, params,),
+        fassert_eq!(
+            preproc_phases_1_to_3(src, &*FILENAME, params),
             Output {
-                num_spaces: 1,
                 new_file: String::from("\n"),
                 issues: add_tri_issue(vec![], params, conv),
                 loc_mapping: locations(params, vec![]),
@@ -380,10 +843,9 @@ fn multiline_comment_split() {
         "#a /* b\n#c */ d\n",
         Default::default(),
         |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
-                    num_spaces: 1,
                     new_file: String::from("\n"),
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(params, vec![]),
@@ -399,10 +861,9 @@ fn multiline_comment_merge() {
         "#a /* b \\\n#c */ d\n",
         Default::default(),
         |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
-                    num_spaces: 1,
                     new_file: String::from("\n"),
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(params, vec![]),
@@ -418,10 +879,9 @@ fn singleline_comment_merge_split() {
         "#a /\\\n/ b /\\\n/ c\n",
         Default::default(),
         |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
-                    num_spaces: 1,
                     new_file: String::from("\n"),
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(params, vec![]),
@@ -437,10 +897,9 @@ fn multiline_comment_merge_split() {
         "#a /\\\n* b *\\\n/ c\n",
         Default::default(),
         |src, params, conv| {
-            assert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params,),
+            fassert_eq!(
+                preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
-                    num_spaces: 1,
                     new_file: String::from("\n"),
                     issues: add_tri_issue(vec![], params, conv),
                     loc_mapping: locations(params, vec![]),
@@ -448,27 +907,6 @@ fn multiline_comment_merge_split() {
             )
         },
     );
-}
-
-#[test]
-fn absent_newline() {
-    for ending in &["", "\\\n"] {
-        do_every(
-            &(String::from("#a") + ending),
-            Default::default(),
-            |src, params, conv| {
-                assert_eq!(
-                    preproc_phases_1_to_3(src, &*FILENAME, params,),
-                    Output {
-                        num_spaces: 1,
-                        new_file: String::from("\n"),
-                        issues: add_tri_issue(vec![], params, conv),
-                        loc_mapping: locations(params, vec![]),
-                    },
-                )
-            },
-        );
-    }
 }
 
 #[test]
@@ -488,10 +926,9 @@ fn cross_quote_line_merge() {
                 |src, params, conv| {
                     let owpt = output_will_preserve_trigraphs(params, conv);
                     let ms = 6 + if *m == " " { 1 } else { 0 };
-                    assert_eq!(
-                        preproc_phases_1_to_3(src, &*FILENAME, params,),
+                    fassert_eq!(
+                        preproc_phases_1_to_3(src, &*FILENAME, params),
                         Output {
-                            num_spaces: ms + if owpt { 1 } else { 0 },
                             new_file: if owpt {
                                 "\n".to_string() + src
                             } else {
@@ -543,7 +980,7 @@ fn cross_quote_line_merge() {
                                 params,
                                 vec![(
                                     true,
-                                    (location(1, 1, 0, params), location(2, 1, 0, params),)
+                                    (location(1, 1, 0, params), location(2, 1, 0, params))
                                 ),]
                                 .into_iter()
                                 .chain(if !owpt {
@@ -563,3 +1000,4 @@ fn cross_quote_line_merge() {
         }
     }
 }
+*/

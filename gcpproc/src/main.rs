@@ -91,10 +91,6 @@ n\"
     dbg!(&ret);
     println!("{}", ret.new_file);
 
-    // Just a guess.
-    let num_tokens_guess = ret.num_spaces * 4;
-    dbg!(num_tokens_guess);
-
     enum ActiveLexer {}
 
     let mut lexer = SourceLex::lexer(&file as &str);
