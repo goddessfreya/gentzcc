@@ -591,46 +591,45 @@ fn singleline_merge_nonblank() {
                 preproc_phases_1_to_3(src, &*FILENAME, params),
                 Output {
                     new_file: if owpt {
-                        trigraphify(
-                            &(String::from("\n")
-                                + src))
+                        trigraphify(&(String::from("\n") + src))
                     } else {
                         String::from("\n#a")
                             + &"\\".repeat(SLASHES - 1)
                             + &"#b\n".repeat(NEWLINES)
                     },
-                    issues: add_tri_issue(vec![
-                            (
-                                NeedConv::No,
-                                NeedOWPT::No,
-                                Issue::new(
-                                    Some(location!(1, 1)),
-                                    IssueType::Warning,
-                                    IssueDesc::TrigraphPresent('=')
-                                )
-                            ),
-                        ]
+                    issues: add_tri_issue(
+                        vec![(
+                            NeedConv::No,
+                            NeedOWPT::No,
+                            Issue::new(
+                                Some(location!(1, 1)),
+                                IssueType::Warning,
+                                IssueDesc::TrigraphPresent('=')
+                            )
+                        ),]
                         .into_iter()
                         .chain((0..SLASHES).into_iter().map(|i| (
-                                NeedConv::No,
-                                NeedOWPT::No,
-                                Issue::new(
-                                    Some(location!(1, 5 + i * 3)),
-                                    IssueType::Warning,
-                                    IssueDesc::TrigraphPresent('/')
-                                )
-                            )))
+                            NeedConv::No,
+                            NeedOWPT::No,
+                            Issue::new(
+                                Some(location!(1, 5 + i * 3)),
+                                IssueType::Warning,
+                                IssueDesc::TrigraphPresent('/')
+                            )
+                        )))
                         .chain((0..NEWLINES).into_iter().map(|i| (
-                                NeedConv::No,
-                                NeedOWPT::No,
-                                Issue::new(
-                                    Some(location!(2 + i, 1)),
-                                    IssueType::Warning,
-                                    IssueDesc::TrigraphPresent('=')
-                                )
-                            )))
-                        .collect()
-                    , params, conv),
+                            NeedConv::No,
+                            NeedOWPT::No,
+                            Issue::new(
+                                Some(location!(2 + i, 1)),
+                                IssueType::Warning,
+                                IssueDesc::TrigraphPresent('=')
+                            )
+                        )))
+                        .collect(),
+                        params,
+                        conv
+                    ),
                     loc_mapping: locations(
                         params,
                         conv,
@@ -648,14 +647,12 @@ fn singleline_merge_nonblank() {
                         ]
                         .into_iter()
                         .chain((0..SLASHES - 2).into_iter().map(|i| (
-                                NeedConv::Yes,
-                                NeedOWPT::Invalid,
-                                (location!(1, 8 + i * 3), location!(2, 4 + i))
+                            NeedConv::Yes,
+                            NeedOWPT::Invalid,
+                            (location!(1, 8 + i * 3), location!(2, 4 + i))
                         )))
                         .chain(vec![
                             (
-                                // No Invalid
-                                // Invalid No, Invalid Invalid
                                 NeedConv::No,
                                 NeedOWPT::Invalid,
                                 (location!(2, 1), location!(2, 7))
@@ -667,9 +664,9 @@ fn singleline_merge_nonblank() {
                             ),
                         ])
                         .chain((0..NEWLINES - 1).into_iter().map(|i| (
-                                NeedConv::Yes,
-                                NeedOWPT::Invalid,
-                                (location!(3 + i, 4), location!(3 + i, 2))
+                            NeedConv::Yes,
+                            NeedOWPT::Invalid,
+                            (location!(3 + i, 4), location!(3 + i, 2))
                         )))
                         .collect()
                     ),
@@ -679,64 +676,88 @@ fn singleline_merge_nonblank() {
     );
 }
 
-/*
 #[test]
 fn header_comment() {
-    do_every(
-        "#a < b // c > d\n",
-        Default::default(),
-        |src, params, conv| {
-            fassert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params),
-                Output {
-                    new_file: String::from(match params.version {
-                        Version::C(CVersion::C89) => "\n#a < b // c > d\n",
-                        _ => "\n#a < b\n",
-                    }),
-                    issues: add_tri_issue(vec![], params, conv),
-                    loc_mapping: locations(
-                        params,
-                        vec![(
-                            true,
-                            (location(1, 1, 0, params), location(2, 1, 0, params))
-                        ),]
-                    ),
-                },
-            )
-        },
-    );
+    for comment in &[("//", "//"), ("/*", "*/")] {
+        eprintln!("Testing for comment {:?}", comment);
+        do_every(
+            &(String::from("#a < b ")
+                + comment.0
+                + " c > d "
+                + comment.1
+                + " e\n"),
+            Default::default(),
+            |src, params, conv| {
+                dbg!(&src);
+                let owpt = output_will_preserve_trigraphs(params, conv);
+                let mut new_file = String::from(match params.version {
+                    Version::C(CVersion::C89) if comment.0 == "//" => {
+                        "\n#a < b // c > d // e"
+                    }
+                    _ => "\n#a < b",
+                });
+
+                if comment.0 == "/*" {
+                    new_file += " e";
+                }
+
+                new_file += "\n";
+                if owpt {
+                    new_file = trigraphify(&new_file);
+                }
+
+                fassert_eq!(
+                    preproc_phases_1_to_3(src, &*FILENAME, params),
+                    Output {
+                        new_file,
+                        issues: add_tri_issue(
+                            vec![(
+                                NeedConv::No,
+                                NeedOWPT::No,
+                                Issue::new(
+                                    Some(location!(1, 1)),
+                                    IssueType::Warning,
+                                    IssueDesc::TrigraphPresent('=')
+                                )
+                            ),],
+                            params,
+                            conv
+                        ),
+                        loc_mapping: locations(
+                            params,
+                            conv,
+                            vec![
+                                (
+                                    NeedConv::No,
+                                    NeedOWPT::No,
+                                    (location!(1, 1), location!(2, 1))
+                                ),
+                                (
+                                    NeedConv::Yes,
+                                    NeedOWPT::Invalid,
+                                    (location!(1, 4), location!(2, 2))
+                                )
+                            ]
+                            .into_iter()
+                            .chain(if comment.0 == "/*" {
+                                Some((
+                                    NeedConv::No,
+                                    NeedOWPT::No,
+                                    (location!(1, 20), location!(2, 8)),
+                                ))
+                            } else {
+                                None
+                            })
+                            .collect()
+                        ),
+                    },
+                )
+            },
+        );
+    }
 }
 
-#[test]
-fn header_multicomment() {
-    do_every(
-        "#a < b /* c > d */ e\n",
-        Default::default(),
-        |src, params, conv| {
-            fassert_eq!(
-                preproc_phases_1_to_3(src, &*FILENAME, params),
-                Output {
-                    new_file: String::from("\n#a < b e\n"),
-                    issues: add_tri_issue(vec![], params, conv),
-                    loc_mapping: locations(
-                        params,
-                        vec![
-                            (
-                                true,
-                                (location(1, 1, 0, params), location(2, 1, 0, params))
-                            ),
-                            (
-                                true,
-                                (location(1, 19, 0, params), location(2, 7, 0, params))
-                            ),
-                        ]
-                    ),
-                },
-            )
-        },
-    );
-}
-
+/*
 #[test]
 fn quote_comment() {
     for quo in &["'", "\""] {
